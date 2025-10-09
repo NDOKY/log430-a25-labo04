@@ -84,7 +84,7 @@ def get_stocks(product_id):
     """Get product stocks by product_id"""
     return get_stock(product_id)
 
-counter_highest_spenders = Counter('/orders/reports/highest-spenders', 'Total calls to /orders/reports/highest-spenders')
+counter_highest_spenders = Counter('highest-spenders', 'Total calls to /orders/reports/highest-spenders')
 @app.get('/orders/reports/highest-spenders')
 def get_orders_highest_spending_users():
     """Get list of highest speding users, ordered by total expenditure"""
@@ -92,7 +92,7 @@ def get_orders_highest_spending_users():
     rows = get_report_highest_spending_users()
     return jsonify(rows)
 
-counter_best_sellers = Counter('/orders/reports/best-sellers', 'Total calls to /orders/reports/best-sellers')
+counter_best_sellers = Counter('best-sellers', 'Total calls to /orders/reports/best-sellers')
 @app.get('/orders/reports/best-sellers')
 def get_orders_report_best_selling_products():
     """Get list of best selling products, ordered by number of orders"""
