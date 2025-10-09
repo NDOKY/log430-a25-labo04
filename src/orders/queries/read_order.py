@@ -81,9 +81,9 @@ def get_highest_spending_users_redis():
     try: 
         start_time = time.time()
         # TODO: optimiser
-       
         r = get_redis_conn()
         report_in_cache = r.hgetall("reports:highest_spending_users")
+        
         if report_in_cache:
             return json.loads(report_in_cache)
         else:
@@ -158,6 +158,8 @@ def get_best_selling_products_redis():
         
     end_time = time.time()
     logger.debug(f"Executed in {end_time - start_time} seconds")
+    r.hset('reports:best_selling_products', mapping=result)
+    r.expire("reports:best_selling_products", 60) # invalider le cache toutes les 60 secondes
     return result
 
 def get_highest_spending_users():
