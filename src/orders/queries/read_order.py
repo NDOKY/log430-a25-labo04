@@ -5,6 +5,8 @@ Auteurs : Gabriel C. Ullmann, Fabio Petrillo, 2025
 """
 import json
 import time
+from collections import defaultdict
+import logging
 from db import get_redis_conn, get_sqlalchemy_session
 from collections import defaultdict
 from logger import Logger
@@ -75,92 +77,103 @@ def get_best_selling_products_mysql():
     finally:
         session.close()
 
+
+logger = logging.getLogger(__name__)
+
 def get_highest_spending_users_redis():
-    """Get report of highest spending users from Redis"""
+    """Get report of highest spending users from Redis.
+    Returns:
+        list[dict]: A list of {"user_id": int, "total_expense": float} or {"error": str}.
+    """
     result = []
-    try: 
-        start_time = time.time()
-        # TODO: optimiser
+    start_time = time.time()
+
+    try:
         r = get_redis_conn()
-        report_in_cache = r.hgetall("reports:highest_spending_users")
-        
+
+        # Vérifier le cache
+        report_in_cache = r.get("reports:highest_spending_users")
         if report_in_cache:
             return json.loads(report_in_cache)
-        else:
-            limit = 10
-            order_keys = r.keys("order:*")
-            spending = defaultdict(float)
 
-            for key in order_keys:
-                order_data = r.hgetall(key)
-                if "user_id" in order_data and "total_amount" in order_data:
+        limit = 10
+        spending = defaultdict(float)
+
+        # Parcours efficace des commandes
+        for key in r.scan_iter("order:*"):
+            order_data = r.hgetall(key)
+            if "user_id" in order_data and "total_amount" in order_data:
+                try:
                     user_id = int(order_data["user_id"])
                     total = float(order_data["total_amount"])
                     spending[user_id] += total
+                except ValueError:
+                    continue  # Ignore les valeurs corrompues
 
-            # Trier par total dépensé (décroissant), limite X
-            highest_spending_users = sorted(spending.items(), key=lambda x: x[1], reverse=True)[:limit]
-            for user in highest_spending_users:
-                result.append({
-                    "user_id": user[0],
-                    "total_expense": round(user[1], 2)
-                })
+        # Trier par dépense décroissante et limiter
+        highest_spending_users = sorted(spending.items(), key=lambda x: x[1], reverse=True)[:limit]
+        result = [
+            {"user_id": user_id, "total_expense": round(total, 2)}
+            for user_id, total in highest_spending_users
+        ]
+
+        # Mettre en cache pour 60 secondes
+        r.set("reports:highest_spending_users", json.dumps(result), ex=60)
+
     except Exception as e:
-        return {'error': str(e)}    
-    
-    end_time = time.time()
-    logger.debug(f"Executed in {end_time - start_time} seconds")
-    r.hset('reports:highest_spending_users', mapping=result)
-    r.expire("reports:highest_spending_users", 60) # invalider le cache toutes les 60 secondes
-    return result   
+        return {"error": str(e)}
+    else:
+        end_time = time.time()
+        logger.debug(f"Executed in {end_time - start_time:.4f} seconds")
+        return result
+  
      
 
     
 
+
+
+logger = logging.getLogger(__name__)
+
 def get_best_selling_products_redis():
-    """Get report of best selling products by quantity sold from Redis"""
+    """Get report of best selling products by quantity sold from Redis."""
     result = []
+    start_time = time.time()
     try:
-        start_time = time.time()
-        # TODO: optimiser
         r = get_redis_conn()
-        report_in_cache = r.hgetall("reports:best_selling_products")
+        report_in_cache = r.get("reports:best_selling_products")
         if report_in_cache:
             return json.loads(report_in_cache)
-        else:
-            limit = 10
-            order_keys = r.keys("order:*")
-            product_sales = defaultdict(int)
-            
-            for order_key in order_keys:
-                order_data = r.hgetall(order_key)
-                if "items" in order_data:
-                    try:
-                        products = json.loads(order_data["items"])
-                    except Exception:
-                        continue
 
-                    for item in products:
-                        product_id = int(item.get("product_id", 0))
-                        quantity = int(item.get("quantity", 0))
-                        product_sales[product_id] += quantity
+        limit = 10
+        product_sales = defaultdict(int)
 
-            # Trier par total vendu (décroissant), limite X
-            best_selling = sorted(product_sales.items(), key=lambda x: x[1], reverse=True)[:limit]
-            for product in best_selling:
-                result.append({
-                    "product_id": product[0],
-                    "quantity_sold": product[1]
-                })
+        for order_key in r.scan_iter("order:*"):
+            order_data = r.hgetall(order_key)
+            if "items" in order_data:
+                try:
+                    products = json.loads(order_data["items"])
+                except Exception:
+                    continue
+
+                for item in products:
+                    product_id = int(item.get("product_id", 0))
+                    quantity = int(item.get("quantity", 0))
+                    product_sales[product_id] += quantity
+
+        best_selling = sorted(product_sales.items(), key=lambda x: x[1], reverse=True)[:limit]
+        result = [{"product_id": pid, "quantity_sold": qty} for pid, qty in best_selling]
+
+        # Cache result for 60 seconds
+        r.set("reports:best_selling_products", json.dumps(result), ex=60)
 
     except Exception as e:
-        return {'error': str(e)}
-        
+        return {"error": str(e)}
+
     end_time = time.time()
-    logger.debug(f"Executed in {end_time - start_time} seconds")
-    r.hset('reports:best_selling_products', mapping=result)
-    r.expire("reports:best_selling_products", 60) # invalider le cache toutes les 60 secondes
+    logger.debug(f"Executed in {end_time - start_time:.4f} seconds")
     return result
+
 
 def get_highest_spending_users():
     """Get report of highest spending users"""
