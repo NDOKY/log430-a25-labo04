@@ -127,13 +127,6 @@ def get_highest_spending_users_redis():
         logger.debug(f"Executed in {end_time - start_time:.4f} seconds")
         return result
   
-     
-
-    
-
-
-
-logger = logging.getLogger(__name__)
 
 def get_best_selling_products_redis():
     """Get report of best selling products by quantity sold from Redis."""
